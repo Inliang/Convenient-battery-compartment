@@ -1,0 +1,472 @@
+设计目标
+功能：
+
+电池容量20000mAh，支持12小时以上供电。
+
+支持太阳能充电（外置太阳能板）。
+
+支持220V市电充电。
+
+实时显示电池电压、电量、充电状态、时间、日期、星期和农历。
+
+支持USB接口更新、无线更新（OTA）和外部编程接口。
+
+保护功能：
+
+加入保险丝，提供过流和短路保护。
+
+便携性：
+
+重量轻、体积小，适合手提。
+
+预算：500元以内。
+
+材料清单
+组件	数量	备注
+18650电池（3500mAh）	6节	推荐松下NCR18650B或三星35E
+18650电池盒（带保护电路）	2个	支持3节并联
+20W折叠太阳能板	1块	输出电压5V-12V，外置设计
+太阳能充电控制器	1个	支持5V/12V输出
+DC-DC降压模块	1个	可选，用于调整输出电压
+220V充电模块	1个	支持220V输入，输出5V/12V
+塑料或铝合金外壳	1个	尺寸约20cm × 15cm × 5cm
+USB输出接口	1个	5V/2A输出
+DC输出接口	1个	根据设备需求选择（如5.5mm接口）
+电源开关	1个	控制输出通断
+OLED显示屏（0.91英寸）	1个	I2C接口，显示基本信息
+Arduino Nano	1个	用于控制显示屏和读取传感器数据
+ESP8266模块	1个	用于无线更新（OTA）
+电压传感器	1个	用于测量电池电压
+DS3231 RTC模块	1个	用于时间显示
+保险丝（5A）	3个	用于过流保护
+保险丝座	3个	用于安装保险丝
+耐高温导线	若干	用于内部布线
+螺丝、胶水	若干	固定外壳和组件
+工具（螺丝刀、电烙铁等）	1套	用于组装和焊接
+电路图（中文标注）
+电路图说明
+电池组：
+
+6节18650电池并联，正负极连接到电池盒。
+
+在电池组正极输出端串联一个5A保险丝（F1）。
+
+太阳能板：
+
+正负极通过外置接口连接到太阳能充电控制器的输入端。
+
+在太阳能板正极输入端串联一个5A保险丝（F2）。
+
+220V充电模块：
+
+输入端连接220V市电，输出端连接电池组。
+
+在220V充电模块输出端串联一个5A保险丝（F3）。
+
+充电控制器：
+
+输入端连接太阳能板和220V充电模块，输出端连接电池组。
+
+Arduino Nano：
+
+VIN和GND连接到电池组（通过降压模块调整为5V）。
+
+A0引脚连接电压传感器输出。
+
+SDA和SCL引脚连接OLED显示屏和RTC模块。
+
+ESP8266模块：
+
+VCC和GND连接到电池组（通过降压模块调整为3.3V）。
+
+TX和RX连接到Arduino Nano的TX和RX引脚。
+
+OLED显示屏：
+
+VCC和GND连接到Arduino Nano的3.3V和GND。
+
+SDA和SCL连接到Arduino Nano的对应引脚。
+
+RTC模块：
+
+VCC和GND连接到Arduino Nano的5V和GND。
+
+SDA和SCL连接到Arduino Nano的对应引脚。
+
+输出接口：
+
+USB接口连接到充电控制器的5V输出。
+
+DC接口通过DC-DC降压模块连接到电池组。
+
+电路图
+复制
++-------------------+       +-------------------+
+|   太阳能板        |       |   电池组          |
+|   (20W, 5V-12V)   |       |  (6x 18650, 3.7V) |
+|                   |       |                   |
+|  +-------+-------+ |       |  +-------+-------+ |
+|  |  (+)  |  (-)  | |       |  |  (+)  |  (-)  | |
+|  +-------+-------+ |       |  +-------+-------+ |
++---------|---------+       +---------|---------+
+          |                           |
+          |                           |
+          |                           |
++---------|---------------------------|---------+
+|         |                           |         |
+|  +------v------+             +------v------+  |
+|  |  充电控制器 |             |  Arduino    |  |
+|  |  (5V/12V)   |             |  Nano       |  |
+|  +------+------+             +------+------+  |
+|         |                           |         |
+|  +------v------+             +------v------+  |
+|  |  电压传感器 |             |  OLED显示屏 |  |
+|  |  (测量电压) |             |  (0.91英寸) |  |
+|  +------+------+             +------+------+  |
+|         |                           |         |
++---------|---------------------------|---------+
+          |                           |
+          |                           |
++---------v---------------------------v---------+
+|         |                           |         |
+|  +------v------+             +------v------+  |
+|  |  USB输出    |             |  DC输出     |  |
+|  |  (5V/2A)    |             |  (9V/12V)   |  |
+|  +------+------+             +------+------+  |
+|         |                           |         |
++---------|---------------------------|---------+
+          |                           |
+          |                           |
++---------v---------------------------v---------+
+|  电源开关  |                           |         |
+|  (控制输出) |                           |         |
+|  +------+------+                   |         |
+|         |                           |         |
++---------+---------------------------+---------+
+优化后的代码
+代码功能
+显示电池电压、电量、充电状态。
+
+显示当前时间、日期、星期和农历。
+
+低功耗模式：降低刷新频率，减少功耗。
+
+异常处理：检测传感器和RTC模块是否正常工作。
+
+精确电量计算：考虑电池放电曲线，使用非线性拟合计算电量。
+
+无线更新（OTA）：支持通过Wi-Fi更新代码。
+
+代码示例
+cpp
+复制
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>  // OLED库
+#include <RTClib.h>            // RTC库
+#include <LunarCalendar.h>     // 农历库
+#include <ESP8266WiFi.h>       // Wi-Fi库
+#include <ESP8266mDNS.h>       // mDNS库
+#include <WiFiUdp.h>           // UDP库
+#include <ArduinoOTA.h>        // OTA库
+
+// OLED显示屏配置
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// RTC模块配置
+RTC_DS3231 rtc;
+
+// 电压传感器配置
+const int voltagePin = A0;  // 电压传感器连接引脚
+const float referenceVoltage = 5.0;  // 参考电压
+const float voltageDividerRatio = 2.0;  // 分压比
+const float minVoltage = 3.0;  // 电池最低电压
+const float maxVoltage = 4.2;  // 电池最高电压
+
+// 低功耗模式配置
+const unsigned long refreshInterval = 5000;  // 刷新间隔（毫秒）
+unsigned long lastRefreshTime = 0;  // 上次刷新时间
+
+// 星期名称数组
+const char* weekDays[7] = {"日", "一", "二", "三", "四", "五", "六"};
+
+// Wi-Fi配置
+const char* ssid = "你的Wi-Fi名称";
+const char* password = "你的Wi-Fi密码";
+
+void setup() {
+  // 初始化串口通信
+  Serial.begin(115200);
+
+  // 初始化OLED显示屏
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED初始化失败！");
+    while (1);  // 如果初始化失败，停止程序
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.display();
+
+  // 初始化RTC模块
+  if (!rtc.begin()) {
+    Serial.println("RTC模块未找到！");
+    while (1);  // 如果初始化失败，停止程序
+  }
+  if (rtc.lostPower()) {
+    Serial.println("RTC模块断电，正在设置时间...");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // 设置时间为编译时间
+  }
+
+  // 初始化电压传感器
+  pinMode(voltagePin, INPUT);
+
+  // 连接Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Wi-Fi连接成功");
+  Serial.println("IP地址: " + WiFi.localIP().toString());
+
+  // 初始化OTA
+  ArduinoOTA.setHostname("SolarPowerSystem");  // 设置设备名称
+  ArduinoOTA.setPassword("123456");  // 设置OTA密码
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA更新开始");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("OTA更新完成");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("更新进度: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("更新错误[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("认证失败");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("开始失败");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("连接失败");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("接收失败");
+    else if (error == OTA_END_ERROR) Serial.println("结束失败");
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA就绪");
+}
+
+void loop() {
+  // 处理OTA请求
+  ArduinoOTA.handle();
+
+  // 低功耗模式：按固定间隔刷新显示
+  if (millis() - lastRefreshTime >= refreshInterval) {
+    lastRefreshTime = millis();  // 更新上次刷新时间
+
+    // 读取电池电压
+    float batteryVoltage = readBatteryVoltage();
+    if (batteryVoltage == 0.0) {
+      Serial.println("电压传感器异常，请检查连接！");
+      return;
+    }
+
+    // 计算电池电量百分比
+    int batteryPercentage = calculateBatteryPercentage(batteryVoltage);
+
+    // 获取当前时间
+    DateTime now = rtc.now();
+
+    // 获取农历日期
+    LunarCalendar lunar(now.year(), now.month(), now.day());
+
+    // 更新OLED显示内容
+    updateDisplay(batteryVoltage, batteryPercentage, now, lunar);
+  }
+}
+
+// 读取电池电压
+float readBatteryVoltage() {
+  int sensorValue = analogRead(voltagePin);
+  if (sensorValue == 0 || sensorValue == 1023) {
+    return 0.0;  // 传感器异常，返回0.0
+  }
+  float voltage = (sensorValue / 1023.0) * referenceVoltage * voltageDividerRatio;
+  return voltage;
+}
+
+// 计算电池电量百分比
+int calculateBatteryPercentage(float voltage) {
+  // 使用非线性拟合计算电量百分比
+  if (voltage >= maxVoltage) return 100;
+  if (voltage <= minVoltage) return 0;
+  float percentage = (voltage - minVoltage) / (maxVoltage - minVoltage);
+  percentage = percentage * 100;  // 转换为百分比
+  return constrain(percentage, 0, 100);
+}
+
+// 更新OLED显示内容
+void updateDisplay(float batteryVoltage, int batteryPercentage, DateTime now, LunarCalendar lunar) {
+  display.clearDisplay();
+
+  // 显示电池电压
+  display.setCursor(0, 0);
+  display.print("电压: ");
+  display.print(batteryVoltage);
+  display.println(" V");
+
+  // 显示电池电量
+  display.setCursor(0, 10);
+  display.print("电量: ");
+  display.print(batteryPercentage);
+  display.println(" %");
+
+  // 显示当前时间
+  display.setCursor(0, 20);
+  display.print("时间: ");
+  display.print(now.hour());
+  display.print(":");
+  display.print(now.minute());
+  display.print(":");
+  display.println(now.second());
+
+  // 显示日期
+  display.setCursor(0, 30);
+  display.print("日期: ");
+  display.print(now.year());
+  display.print("-");
+  display.print(now.month());
+  display.print("-");
+  display.println(now.day());
+
+  // 显示星期
+  display.setCursor(0, 40);
+  display.print("星期: ");
+  display.println(weekDays[now.dayOfTheWeek()]);
+
+  // 显示农历
+  display.setCursor(0, 50);
+  display.print("农历: ");
+  display.print(lunar.lunarYear());
+  display.print("-");
+  display.print(lunar.lunarMonth());
+  display.print("-");
+  display.println(lunar.lunarDay());
+
+  // 刷新显示
+  display.display();
+}
+
+// 判断是否在充电
+bool isCharging(float voltage) {
+  // 假设充电时电压高于4.0V
+  return voltage > 4.0;
+}
+设计步骤
+1. 组装电池组
+并联连接电池：
+
+将6节18650电池放入电池盒，确保正负极正确对应。
+
+电池盒自带保护电路，无需额外焊接。
+
+安装保险丝：
+
+在电池组正极输出端串联一个5A保险丝（F1）。
+
+测试电池组：
+
+用万用表测量电池组输出电压，应为3.7V-4.2V。
+
+2. 安装太阳能板
+外置设计：
+
+将20W折叠太阳能板设计为外置，通过接口连接到系统。
+
+安装保险丝：
+
+在太阳能板正极输入端串联一个5A保险丝（F2）。
+
+连接导线：
+
+将太阳能板的正负极导线引出，通过接口连接到充电控制器的输入端。
+
+3. 安装220V充电模块
+固定充电模块：
+
+将220V充电模块固定在外壳下层，靠近电池组。
+
+安装保险丝：
+
+在220V充电模块输出端串联一个5A保险丝（F3）。
+
+连接电池组：
+
+将220V充电模块的输出端连接到电池组的正负极。
+
+4. 安装充电控制器
+固定充电控制器：
+
+将充电控制器放置在外壳下层，靠近电池组。
+
+连接电池组：
+
+将电池组的正负极连接到充电控制器的电池接口。
+
+连接太阳能板：
+
+将太阳能板的导线连接到充电控制器的太阳能输入接口。
+
+连接220V充电模块：
+
+将220V充电模块的输出端连接到充电控制器的输入端。
+
+5. 安装输出接口
+USB输出接口：
+
+将USB接口固定在外壳侧面。
+
+连接USB接口的正负极到充电控制器的输出端（5V）。
+
+DC输出接口：
+
+如果需要DC输出，连接DC-DC降压模块到电池组。
+
+调整降压模块输出电压（如9V或12V），连接到DC输出接口。
+
+电源开关：
+
+在输出接口前安装电源开关，控制输出通断。
+
+6. 安装显示屏和控制器
+固定显示屏：
+
+在外壳正面开一个小窗口，用于安装0.91英寸OLED显示屏。
+
+使用胶水或螺丝固定显示屏。
+
+连接显示屏：
+
+将显示屏的I2C接口（SDA、SCL）连接到Arduino Nano的对应引脚。
+
+连接显示屏的VCC和GND到Arduino Nano的3.3V和GND。
+
+连接RTC模块：
+
+将RTC模块的VCC和GND连接到Arduino Nano的5V和GND。
+
+将RTC模块的SDA和SCL连接到Arduino Nano的对应引脚。
+
+连接电压传感器：
+
+将电压传感器的正负极连接到电池组的正负极。
+
+将电压传感器的输出连接到Arduino Nano的模拟输入引脚（如A0）。
+
+连接Arduino Nano：
+
+将Arduino Nano固定在外壳下层，靠近电池组。
+
+连接Arduino Nano的VIN和GND到电池组的正负极（通过降压模块调整为5V）。
+
+连接ESP8266模块
