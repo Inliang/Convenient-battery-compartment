@@ -1,0 +1,202 @@
+#include <Wire.h>
+#include <Adafruit_SSD1306.h>  // OLED库
+#include <RTClib.h>            // RTC库
+#include <LunarCalendar.h>     // 农历库
+#include <ESP8266WiFi.h>       // Wi-Fi库
+#include <ESP8266mDNS.h>       // mDNS库
+#include <WiFiUdp.h>           // UDP库
+#include <ArduinoOTA.h>        // OTA库
+
+// OLED显示屏配置
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// RTC模块配置
+RTC_DS3231 rtc;
+
+// 电压传感器配置
+const int voltagePin = A0;  // 电压传感器连接引脚
+const float referenceVoltage = 5.0;  // 参考电压
+const float voltageDividerRatio = 2.0;  // 分压比
+const float minVoltage = 3.0;  // 电池最低电压
+const float maxVoltage = 4.2;  // 电池最高电压
+
+// 低功耗模式配置
+const unsigned long refreshInterval = 5000;  // 刷新间隔（毫秒）
+unsigned long lastRefreshTime = 0;  // 上次刷新时间
+
+// 星期名称数组
+const char* weekDays[7] = {"日", "一", "二", "三", "四", "五", "六"};
+
+// Wi-Fi配置
+const char* ssid = "你的Wi-Fi名称";
+const char* password = "你的Wi-Fi密码";
+
+void setup() {
+  // 初始化串口通信
+  Serial.begin(115200);
+
+  // 初始化OLED显示屏
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("OLED初始化失败！");
+    while (1);  // 如果初始化失败，停止程序
+  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.display();
+
+  // 初始化RTC模块
+  if (!rtc.begin()) {
+    Serial.println("RTC模块未找到！");
+    while (1);  // 如果初始化失败，停止程序
+  }
+  if (rtc.lostPower()) {
+    Serial.println("RTC模块断电，正在设置时间...");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));  // 设置时间为编译时间
+  }
+
+  // 初始化电压传感器
+  pinMode(voltagePin, INPUT);
+
+  // 连接Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Wi-Fi连接成功");
+  Serial.println("IP地址: " + WiFi.localIP().toString());
+
+  // 初始化OTA
+  ArduinoOTA.setHostname("SolarPowerSystem");  // 设置设备名称
+  ArduinoOTA.setPassword("123456");  // 设置OTA密码
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA更新开始");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("OTA更新完成");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("更新进度: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("更新错误[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("认证失败");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("开始失败");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("连接失败");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("接收失败");
+    else if (error == OTA_END_ERROR) Serial.println("结束失败");
+  });
+  ArduinoOTA.begin();
+  Serial.println("OTA就绪");
+}
+
+void loop() {
+  // 处理OTA请求
+  ArduinoOTA.handle();
+
+  // 低功耗模式：按固定间隔刷新显示
+  if (millis() - lastRefreshTime >= refreshInterval) {
+    lastRefreshTime = millis();  // 更新上次刷新时间
+
+    // 读取电池电压
+    float batteryVoltage = readBatteryVoltage();
+    if (batteryVoltage == 0.0) {
+      Serial.println("电压传感器异常，请检查连接！");
+      return;
+    }
+
+    // 计算电池电量百分比
+    int batteryPercentage = calculateBatteryPercentage(batteryVoltage);
+
+    // 获取当前时间
+    DateTime now = rtc.now();
+
+    // 获取农历日期
+    LunarCalendar lunar(now.year(), now.month(), now.day());
+
+    // 更新OLED显示内容
+    updateDisplay(batteryVoltage, batteryPercentage, now, lunar);
+  }
+}
+
+// 读取电池电压
+float readBatteryVoltage() {
+  int sensorValue = analogRead(voltagePin);
+  if (sensorValue == 0 || sensorValue == 1023) {
+    return 0.0;  // 传感器异常，返回0.0
+  }
+  float voltage = (sensorValue / 1023.0) * referenceVoltage * voltageDividerRatio;
+  return voltage;
+}
+
+// 计算电池电量百分比
+int calculateBatteryPercentage(float voltage) {
+  // 使用非线性拟合计算电量百分比
+  if (voltage >= maxVoltage) return 100;
+  if (voltage <= minVoltage) return 0;
+  float percentage = (voltage - minVoltage) / (maxVoltage - minVoltage);
+  percentage = percentage * 100;  // 转换为百分比
+  return constrain(percentage, 0, 100);
+}
+
+// 更新OLED显示内容
+void updateDisplay(float batteryVoltage, int batteryPercentage, DateTime now, LunarCalendar lunar) {
+  display.clearDisplay();
+
+  // 显示电池电压
+  display.setCursor(0, 0);
+  display.print("电压: ");
+  display.print(batteryVoltage);
+  display.println(" V");
+
+  // 显示电池电量
+  display.setCursor(0, 10);
+  display.print("电量: ");
+  display.print(batteryPercentage);
+  display.println(" %");
+
+  // 显示当前时间
+  display.setCursor(0, 20);
+  display.print("时间: ");
+  display.print(now.hour());
+  display.print(":");
+  display.print(now.minute());
+  display.print(":");
+  display.println(now.second());
+
+  // 显示日期
+  display.setCursor(0, 30);
+  display.print("日期: ");
+  display.print(now.year());
+  display.print("-");
+  display.print(now.month());
+  display.print("-");
+  display.println(now.day());
+
+  // 显示星期
+  display.setCursor(0, 40);
+  display.print("星期: ");
+  display.println(weekDays[now.dayOfTheWeek()]);
+
+  // 显示农历
+  display.setCursor(0, 50);
+  display.print("农历: ");
+  display.print(lunar.lunarYear());
+  display.print("-");
+  display.print(lunar.lunarMonth());
+  display.print("-");
+  display.println(lunar.lunarDay());
+
+  // 刷新显示
+  display.display();
+}
+
+// 判断是否在充电
+bool isCharging(float voltage) {
+  // 假设充电时电压高于4.0V
+  return voltage > 4.0;
+}
