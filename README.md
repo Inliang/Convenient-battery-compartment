@@ -47,7 +47,7 @@
 ---
 
 ## 电路图
-![电路图](https://via.placeholder.com/800x600.png?text=电路图+示意图)
+![电路图](https://github.com/Inliang/Convenient-battery-compartment/edit/main/电路图.md)
 
 ---
 
