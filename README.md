@@ -47,7 +47,7 @@
 ---
 
 ## 电路图
-![电路图](https://github.com/Inliang/Convenient-battery-compartment/edit/main/电路图.md)
+![电路图](http://wd393.fun:10001/i/2025/02/02/fk0a4a.png)
 
 ---
 
